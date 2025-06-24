@@ -1,0 +1,63 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build TypeScript
+      run: npm run build
+      
+    - name: Deploy to AWS EC2
+      if: github.ref == 'refs/heads/main'
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.AWS_HOST }}
+        username: ${{ secrets.AWS_USER }}
+        key: ${{ secrets.AWS_PRIVATE_KEY }}
+        passphrase: ${{ secrets.AWS_PASSPHRASE }}
+        script: |
+          cd /root/CLAUDE
+          
+          # Create project directory if it doesn't exist
+          mkdir -p tomislav
+          cd tomislav
+          
+          # Clone or update repository
+          if [ -d ".git" ]; then
+            git fetch origin
+            git reset --hard origin/main
+          else
+            git clone https://github.com/tomdevs91/tomislav.git .
+          fi
+          
+          # Install dependencies and build
+          npm ci
+          npm run build
+          
+          # Stop existing process if running
+          pkill -f "node.*tomislav" || true
+          
+          # Start the application
+          nohup npm start > app.log 2>&1 &
+          
+          echo "Deployment completed successfully"
+          echo "Application is running at /root/CLAUDE/tomislav"
